@@ -41,15 +41,16 @@ public sealed class SqliteRecentProjectsStore : IRecentProjectsStore
 
         var projects = new List<string>();
         var missingProjects = new List<string>();
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
         {
-            var projectPath = reader.GetString(0);
-            if (File.Exists(projectPath)) projects.Add(projectPath);
-            else missingProjects.Add(projectPath);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var projectPath = reader.GetString(0);
+                if (File.Exists(projectPath)) projects.Add(projectPath);
+                else missingProjects.Add(projectPath);
+            }
         }
 
-        await reader.DisposeAsync();
         foreach (var missingProject in missingProjects)
         {
             await DeleteAsync(connection, missingProject, cancellationToken);
@@ -61,7 +62,7 @@ public sealed class SqliteRecentProjectsStore : IRecentProjectsStore
     public async Task RememberAsync(string projectPath, CancellationToken cancellationToken = default)
     {
         var normalizedPath = Path.GetFullPath(projectPath);
-        if (!File.Exists(normalizedPath) || !normalizedPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+        if (!File.Exists(normalizedPath) || !ProjectFile.IsSupported(normalizedPath))
         {
             throw new FileNotFoundException("The selected .NET project no longer exists.", normalizedPath);
         }

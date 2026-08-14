@@ -51,6 +51,28 @@ public sealed class SqliteRecentProjectsStoreTests : IDisposable
         Assert.Empty(await new SqliteRecentProjectsStore(databasePath, timeProvider).ListAsync());
     }
 
+    [Theory]
+    [InlineData("Library.fsproj")]
+    [InlineData("Legacy.vbproj")]
+    public async Task RememberAsync_AcceptsEverySupportedProjectType(string fileName)
+    {
+        var store = CreateStore();
+        var project = CreateProjectFile(fileName);
+
+        await store.RememberAsync(project);
+
+        Assert.Equal([project], await store.ListAsync());
+    }
+
+    [Fact]
+    public async Task RememberAsync_RejectsAFileThatIsNotAProject()
+    {
+        var store = CreateStore();
+        var notAProject = CreateProjectFile("appsettings.json");
+
+        await Assert.ThrowsAsync<FileNotFoundException>(() => store.RememberAsync(notAProject));
+    }
+
     [Fact]
     public async Task RememberAsync_CreatesDatabaseDirectory()
     {
@@ -71,10 +93,12 @@ public sealed class SqliteRecentProjectsStoreTests : IDisposable
         Path.Combine(temporaryDirectory, ".secrets-workbench", "secret-workbench.db"),
         timeProvider);
 
-    private string CreateProject(string name)
+    private string CreateProject(string name) => CreateProjectFile($"{name}.csproj");
+
+    private string CreateProjectFile(string fileName)
     {
         Directory.CreateDirectory(temporaryDirectory);
-        var path = Path.Combine(temporaryDirectory, $"{name}.csproj");
+        var path = Path.Combine(temporaryDirectory, fileName);
         File.WriteAllText(path, "<Project />");
         return path;
     }

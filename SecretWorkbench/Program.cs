@@ -1,6 +1,9 @@
 using System.Net;
+using Microsoft.AspNetCore.Connections;
+using Microsoft.AspNetCore.HostFiltering;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
+using Radzen;
 using SecretWorkbench.Components;
 using SecretWorkbench.Services;
 
@@ -22,6 +25,13 @@ if (toolOptions.ShowHelp)
     return 0;
 }
 
+if (!LoopbackPort.IsAvailable(toolOptions.Port))
+{
+    Console.Error.WriteLine($"Port {toolOptions.Port} is already in use.");
+    Console.Error.WriteLine("Use '--port 0' to pick an available port, or '--port <port>' for a specific free one.");
+    return 2;
+}
+
 var packagedWebRoot = Path.Combine(AppContext.BaseDirectory, "wwwroot");
 var contentRoot = Directory.Exists(packagedWebRoot)
     ? AppContext.BaseDirectory
@@ -34,10 +44,21 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 });
 builder.WebHost.ConfigureKestrel(kestrel => kestrel.Listen(IPAddress.Loopback, toolOptions.Port));
 
+// Only requests that address the app as loopback are served. Without this, a page the developer
+// visits could point a hostname it controls at 127.0.0.1 (DNS rebinding) and read every secret.
+builder.Services.Configure<HostFilteringOptions>(options =>
+{
+    options.AllowedHosts = ["127.0.0.1", "localhost"];
+    options.AllowEmptyHosts = false;
+});
+
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
-builder.Services.AddSingleton<IUserSecretsService, DotNetUserSecretsService>();
+builder.Services.AddRadzenComponents();
+builder.Services.AddSingleton<UserSecretsIdResolver>();
+builder.Services.AddSingleton<IUserSecretsService>(provider =>
+    new DotNetUserSecretsService(provider.GetRequiredService<UserSecretsIdResolver>()));
 builder.Services.AddSingleton<IRecentProjectsStore, SqliteRecentProjectsStore>();
 builder.Services.AddSingleton(toolOptions);
 
@@ -55,7 +76,16 @@ app.UseStaticFiles();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
-await app.StartAsync();
+try
+{
+    await app.StartAsync();
+}
+catch (IOException exception) when (exception.InnerException is AddressInUseException)
+{
+    Console.Error.WriteLine($"Port {toolOptions.Port} is already in use.");
+    Console.Error.WriteLine("Use '--port 0' to pick an available port, or '--port <port>' for a specific free one.");
+    return 2;
+}
 
 var address = app.Services.GetRequiredService<IServer>()
     .Features.Get<IServerAddressesFeature>()?
