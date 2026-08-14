@@ -8,39 +8,36 @@
 
 <PageTitle>Secret Workbench</PageTitle>
 
-<header class="tool-nav">
+<header class="utility-bar">
     <div class="brand"><span class="brand-mark" aria-hidden="true">{ }</span><span>Secret Workbench</span></div>
-    <button class="project-search" type="button" @onclick="FocusRoot" aria-label="Focus project folder">
-        <span>Find a project</span><kbd>⌘ K</kbd>
-    </button>
-    <span class="local-badge">Local only</span>
+    <div class="utility-meta"><RadzenIcon Icon="lock" aria-hidden="true" /><span>Local workspace</span></div>
 </header>
 
 <section class="workbench">
     <aside class="project-panel" aria-label="Project browser" data-project-sidebar>
         <div class="sidebar-resizer" onpointerdown="window.secretWorkbenchSidebar.startResize(event)" ondblclick="window.secretWorkbenchSidebar.reset()" title="Drag to resize; double-click to reset" aria-hidden="true"></div>
         <div class="panel-heading">
-            <h1>Choose a project</h1>
+            <div><p class="eyebrow">Project index</p><h1>Projects</h1></div>
             <div class="panel-heading-actions">
                 <div class="view-switcher" role="group" aria-label="Project view">
-                    <button class="@(ProjectView == ProjectViewMode.List ? "is-active" : null)" @onclick="() => ProjectView = ProjectViewMode.List" title="List view">List</button>
-                    <button class="@(ProjectView == ProjectViewMode.Tree ? "is-active" : null)" @onclick="() => ProjectView = ProjectViewMode.Tree" title="Folder tree view">Tree</button>
+                    <RadzenButton Icon="view_list" ButtonStyle="ButtonStyle.Light" Variant="Variant.Text" class="@(ProjectView == ProjectViewMode.List ? "is-active" : null)" Click="() => ProjectView = ProjectViewMode.List" title="List view" />
+                    <RadzenButton Icon="account_tree" ButtonStyle="ButtonStyle.Light" Variant="Variant.Text" class="@(ProjectView == ProjectViewMode.Tree ? "is-active" : null)" Click="() => ProjectView = ProjectViewMode.Tree" title="Folder tree view" />
                 </div>
-                <span class="count">@AllProjectsCount</span>
+                <RadzenBadge Text="@AllProjectsCount.ToString()" BadgeStyle="BadgeStyle.Light" />
             </div>
         </div>
 
-        <label for="root-path">Folder path</label>
+        <label for="root-path">Workspace folder</label>
         <div class="path-row">
-            <input id="root-path" @ref="rootInput" @bind="RootPath" @bind:event="oninput" placeholder="/path/to/solution" />
-            <button class="button button-secondary" type="button" @onclick="ScanAsync" disabled="@IsBusy">Scan</button>
+            <input id="root-path" class="rz-textbox" @bind="RootPath" @bind:event="oninput" placeholder="/path/to/solution" />
+            <RadzenButton Icon="search" Text="Scan" ButtonStyle="ButtonStyle.Secondary" Variant="Variant.Outlined" Click="ScanAsync" IsBusy="IsBusy" />
         </div>
-        <p class="helper">Scans up to 250 projects, skipping build and source-control folders.</p>
+        <p class="helper">Finds up to @DotNetUserSecretsService.MaximumProjects projects (@ProjectFile.SupportedExtensionsForDisplay), nearest first. Build and source-control folders are skipped.</p>
 
         <div class="project-list">
             @if (RecentProjects.Count == 0 && Projects.Count == 0)
             {
-                <div class="empty-state"><span aria-hidden="true">⌁</span><p>No projects loaded.</p><button class="text-action" @onclick="ScanAsync">Scan this folder</button></div>
+                <div class="empty-state"><RadzenIcon Icon="folder_open" /><strong>No projects indexed</strong><p>Scan the workspace folder to get started.</p><RadzenButton Text="Scan folder" Icon="search" Variant="Variant.Text" Click="ScanAsync" /></div>
             }
             @if (RecentProjects.Count > 0)
             {
@@ -49,7 +46,7 @@
             @foreach (var project in RecentProjects)
             {
                 <button class="project-item @(project == SelectedProject ? "is-selected" : null)" @onclick="() => OpenProjectAsync(project)">
-                    <span class="project-icon" aria-hidden="true">#</span>
+                    <RadzenIcon class="project-icon" Icon="terminal" aria-hidden="true" />
                     <span><strong>@Path.GetFileNameWithoutExtension(project)</strong><small>@ProjectDirectory(project)</small></span>
                 </button>
             }
@@ -61,7 +58,7 @@
                     @foreach (var project in ScannedProjects)
                     {
                         <button class="project-item @(project == SelectedProject ? "is-selected" : null)" @onclick="() => OpenProjectAsync(project)">
-                            <span class="project-icon" aria-hidden="true">#</span>
+                            <RadzenIcon class="project-icon" Icon="terminal" aria-hidden="true" />
                             <span><strong>@Path.GetFileNameWithoutExtension(project)</strong><small>@RelativeProjectPath(project)</small></span>
                         </button>
                     }
@@ -77,36 +74,51 @@
     <main class="editor-panel">
         @if (SelectedProject is null)
         {
-            <div class="welcome-state"><p class="machine-label">DOTNET USER-SECRETS</p><h2>Edit the whole set.</h2><p>Choose a project to load its development secrets. Values stay on this machine and are passed to the official .NET CLI.</p></div>
+            <div class="welcome-state">
+                <div class="welcome-icon"><RadzenIcon Icon="key" /></div>
+                <p class="eyebrow">.NET user secrets</p>
+                <h2>Select a project to begin.</h2>
+                <p>Choose a compatible project from the index. You can then edit its complete secret set or replace it with nested appsettings-style JSON.</p>
+                <div class="privacy-note"><RadzenIcon Icon="verified_user" /><span>Values stay on this machine, in the same user-secrets store the .NET CLI reads.</span></div>
+            </div>
         }
         else
         {
             <div class="editor-heading">
-                <div><h2>@Path.GetFileNameWithoutExtension(SelectedProject)</h2><p>@Path.GetFileName(SelectedProject) · @Entries.Count secret@(Entries.Count == 1 ? string.Empty : "s") · @ChangeSummary</p></div>
+                <div><p class="eyebrow">Active project</p><h2>@Path.GetFileNameWithoutExtension(SelectedProject)</h2><p class="project-path">@SelectedProject</p></div>
                 <div class="editor-actions">
-                    <button class="button button-secondary" @onclick="AddEntry" disabled="@IsBusy">Add secret</button>
-                    <button class="button button-primary" @onclick="SaveAsync" disabled="@(!CanSave || IsBusy)">@(IsSaving ? "Saving…" : "Save changes")</button>
+                    <RadzenButton Text="Add secret" Icon="add" ButtonStyle="ButtonStyle.Secondary" Variant="Variant.Outlined" Click="AddEntry" Disabled="IsBusy" />
+                    <RadzenButton Text="Save changes" BusyText="Saving…" Icon="save" ButtonStyle="ButtonStyle.Primary" Click="SaveAsync" Disabled="@(!CanSave || IsBusy)" IsBusy="IsSaving" />
                 </div>
             </div>
 
+            <div class="editor-meta"><span>@Entries.Count secret@(Entries.Count == 1 ? string.Empty : "s")</span><span class="change-state @(CurrentFingerprint == OriginalFingerprint ? null : "is-dirty")">@ChangeSummary</span></div>
+
             @if (!string.IsNullOrWhiteSpace(StatusMessage))
             {
-                <div class="status @(HasError ? "status-error" : "status-success")" role="status">@StatusMessage</div>
+                @if (HasError)
+                {
+                    <RadzenAlert AlertStyle="AlertStyle.Danger" Variant="Variant.Flat" Shade="Shade.Lighter" role="status">@StatusMessage</RadzenAlert>
+                }
+                else
+                {
+                    <RadzenAlert AlertStyle="AlertStyle.Success" Variant="Variant.Flat" Shade="Shade.Lighter" role="status">@StatusMessage</RadzenAlert>
+                }
             }
 
             <div class="table-tools">
-                <label class="filter-field"><span class="visually-hidden">Filter secrets</span><input @bind="Filter" @bind:event="oninput" placeholder="Filter keys…" /></label>
-                <button class="text-action" @onclick="ToggleJson">@(ShowJson ? "Close JSON" : "Paste JSON")</button>
+                <div class="filter-field"><RadzenIcon Icon="filter_list" /><RadzenTextBox @bind-Value="Filter" Immediate="true" Placeholder="Filter keys…" aria-label="Filter secrets" /></div>
+                <RadzenButton Text="@(ShowJson ? "Close JSON" : "Paste JSON")" Icon="data_object" Variant="Variant.Text" ButtonStyle="ButtonStyle.Secondary" Click="ToggleJson" />
             </div>
 
             @if (ShowJson)
             {
-                <section class="json-import">
-                    <label for="json-input">appsettings-style JSON</label>
-                    <textarea id="json-input" @bind="JsonInput" placeholder='{"ConnectionStrings":{"Main":"…"}}'></textarea>
+                <RadzenCard class="json-import" Variant="Variant.Outlined">
+                    <div class="json-heading"><div><p class="eyebrow">Bulk import</p><h3>Paste appsettings JSON</h3></div><RadzenIcon Icon="data_object" /></div>
+                    <RadzenTextArea id="json-input" @bind-Value="JsonInput" Rows="9" Placeholder='{"ConnectionStrings":{"Main":"…"}}' aria-label="appsettings-style JSON" />
                     <p class="helper">Nested objects and arrays are flattened to colon-delimited configuration keys. Importing replaces the complete editor contents.</p>
-                    <div><button class="button button-secondary" @onclick="ImportJson">Replace editor from JSON</button></div>
-                </section>
+                    <div><RadzenButton Text="Replace editor from JSON" Icon="swap_horiz" ButtonStyle="ButtonStyle.Secondary" Variant="Variant.Outlined" Click="ImportJson" /></div>
+                </RadzenCard>
             }
 
             <div class="secret-table" role="table" aria-label="Project secrets">
@@ -114,11 +126,11 @@
                 @foreach (var entry in FilteredEntries)
                 {
                     <div class="secret-row" role="row">
-                        <label><span class="mobile-label">Key</span><input @bind="entry.Key" @bind:event="oninput" placeholder="Section:Key" aria-label="Secret key" /></label>
-                        <label><span class="mobile-label">Value</span><input type="@(entry.IsRevealed ? "text" : "password")" @bind="entry.Value" @bind:event="oninput" placeholder="Secret value" aria-label="Secret value" /></label>
+                        <label><span class="mobile-label">Key</span><RadzenTextBox @bind-Value="entry.Key" Immediate="true" Placeholder="Section:Key" aria-label="Secret key" /></label>
+                        <label><span class="mobile-label">Value</span><input type="@(entry.IsRevealed ? "text" : "password")" class="rz-textbox" @bind="entry.Value" @bind:event="oninput" placeholder="Secret value" aria-label="Secret value" /></label>
                         <div class="row-actions">
-                            <button class="icon-action" @onclick="() => entry.IsRevealed = !entry.IsRevealed" aria-label="@(entry.IsRevealed ? "Hide value" : "Reveal value")">@(entry.IsRevealed ? "Hide" : "Show")</button>
-                            <button class="icon-action danger" @onclick="() => RemoveEntry(entry)" aria-label="Remove secret">Remove</button>
+                            <RadzenButton Icon="@(entry.IsRevealed ? "visibility_off" : "visibility")" Variant="Variant.Text" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="() => entry.IsRevealed = !entry.IsRevealed" aria-label="@(entry.IsRevealed ? "Hide value" : "Reveal value")" />
+                            <RadzenButton Icon="delete" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="() => RemoveEntry(entry)" aria-label="Remove secret" />
                         </div>
                     </div>
                 }
@@ -127,13 +139,12 @@
     </main>
 </section>
 
-<footer class="app-footer"><span>Development secrets are not encrypted.</span><a href="https://learn.microsoft.com/aspnet/core/security/app-secrets" target="_blank" rel="noreferrer">Microsoft guidance ↗</a></footer>
+<footer class="app-footer"><span><RadzenIcon Icon="info" /> Development secrets are not encrypted.</span><a href="https://learn.microsoft.com/aspnet/core/security/app-secrets" target="_blank" rel="noreferrer">Microsoft guidance <RadzenIcon Icon="open_in_new" /></a></footer>
 
 @code {
     private readonly List<SecretEntry> Entries = [];
     private readonly List<string> Projects = [];
     private readonly List<string> RecentProjects = [];
-    private ElementReference rootInput;
     private string RootPath { get; set; } = string.Empty;
     private string? SelectedProject { get; set; }
     private string Filter { get; set; } = string.Empty;
@@ -155,7 +166,7 @@
     private string ChangeSummary => CurrentFingerprint == OriginalFingerprint ? "No unsaved changes" : "Unsaved changes";
     private IEnumerable<string> ScannedProjects => Projects.Where(project => !RecentProjects.Contains(project, StringComparer.OrdinalIgnoreCase));
     private int AllProjectsCount => RecentProjects.Concat(Projects).Distinct(StringComparer.OrdinalIgnoreCase).Count();
-    private IReadOnlyList<ProjectTreeNode> ProjectTreeNodes => BuildProjectTree(ScannedProjects);
+    private IReadOnlyList<ProjectTreeNode> ProjectTreeNodes => ProjectTreeBuilder.Build(RootPath, ScannedProjects);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -167,11 +178,17 @@
         }
     }
 
-    private async Task FocusRoot() => await rootInput.FocusAsync();
-
     private async Task ScanAsync()
     {
-        await RunAsync(async () => { Projects.Clear(); Projects.AddRange(await SecretsService.FindProjectsAsync(RootPath)); StatusMessage = $"Found {Projects.Count} project(s)."; });
+        await RunAsync(async () =>
+        {
+            var scan = await SecretsService.FindProjectsAsync(RootPath);
+            Projects.Clear();
+            Projects.AddRange(scan.Projects);
+            StatusMessage = scan.WasTruncated
+                ? $"Showing the first {scan.Projects.Count} projects nearest this folder. Scan a narrower folder to reach the rest."
+                : $"Found {scan.Projects.Count} project(s).";
+        });
     }
 
     private async Task OpenProjectAsync(string project)
@@ -181,7 +198,7 @@
             Entries.Clear();
             IReadOnlyDictionary<string, string> secrets;
             try { secrets = await SecretsService.ListAsync(project); }
-            catch (InvalidOperationException ex) when (ex.Message.Contains("UserSecretsId", StringComparison.OrdinalIgnoreCase))
+            catch (UserSecretsNotInitializedException)
             {
                 await SecretsService.InitializeAsync(project);
                 secrets = await SecretsService.ListAsync(project);
@@ -244,40 +261,6 @@
 
     private string RelativeProjectPath(string project) => Path.GetRelativePath(RootPath, project);
     private static string ProjectDirectory(string project) => Path.GetDirectoryName(project) ?? project;
-
-    private IReadOnlyList<ProjectTreeNode> BuildProjectTree(IEnumerable<string> projects)
-    {
-        var root = new ProjectTreeNode(string.Empty);
-        foreach (var project in projects.OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
-        {
-            var segments = Path.GetRelativePath(RootPath, project)
-                .Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-                .Where(segment => !string.IsNullOrWhiteSpace(segment) && segment != ".")
-                .ToArray();
-            var current = root;
-            foreach (var directory in segments.Take(Math.Max(0, segments.Length - 1)))
-            {
-                var child = current.Children.FirstOrDefault(node => !node.IsProject && node.Name.Equals(directory, StringComparison.OrdinalIgnoreCase));
-                if (child is null)
-                {
-                    child = new ProjectTreeNode(directory);
-                    current.Children.Add(child);
-                }
-                current = child;
-            }
-            current.Children.Add(new ProjectTreeNode(segments.LastOrDefault() ?? Path.GetFileName(project), project));
-        }
-        SortTree(root.Children);
-        return root.Children;
-    }
-
-    private static void SortTree(List<ProjectTreeNode> nodes)
-    {
-        nodes.Sort((left, right) => left.IsProject == right.IsProject
-            ? StringComparer.OrdinalIgnoreCase.Compare(left.Name, right.Name)
-            : left.IsProject ? 1 : -1);
-        foreach (var node in nodes) SortTree(node.Children);
-    }
 
     private async Task LoadRecentProjectsAsync()
     {

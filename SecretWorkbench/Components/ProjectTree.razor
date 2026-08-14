@@ -9,14 +9,14 @@
                 <button class="tree-project @(node.ProjectPath == SelectedProject ? "is-selected" : null)"
                         @onclick="() => ProjectSelected.InvokeAsync(node.ProjectPath!)"
                         title="@node.ProjectPath">
-                    <span class="project-icon" aria-hidden="true">#</span>
+                    <RadzenIcon class="project-icon" Icon="terminal" aria-hidden="true" />
                     <strong>@Path.GetFileNameWithoutExtension(node.Name)</strong>
                 </button>
             }
             else
             {
                 <details open>
-                    <summary><span aria-hidden="true">▸</span><strong>@node.Name</strong></summary>
+                    <summary><RadzenIcon Icon="folder" aria-hidden="true" /><strong>@node.Name</strong></summary>
                     <ProjectTree Nodes="node.Children" SelectedProject="SelectedProject" ProjectSelected="ProjectSelected" />
                 </details>
             }
