@@ -62,22 +62,10 @@ jobs:
           --no-restore
           --configuration Release
           -p:Version=${{ steps.version.outputs.value }}
+          -p:ContinuousIntegrationBuild=true
 
       - name: Smoke-test each tool framework
-        shell: bash
-        env:
-          PACKAGE_VERSION: ${{ steps.version.outputs.value }}
-        run: |
-          for framework in net8.0 net9.0 net10.0; do
-            tool_path="artifacts/smoke/$framework"
-            dotnet tool install \
-              --tool-path "$tool_path" \
-              --add-source artifacts/packages \
-              --framework "$framework" \
-              SecretWorkbench \
-              --version "$PACKAGE_VERSION"
-            "$tool_path/secret-workbench" --help
-          done
+        run: scripts/smoke-test.sh "${{ steps.version.outputs.value }}"
 
       - name: Preserve package artifact
         uses: actions/upload-artifact@v4
