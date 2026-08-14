@@ -56,12 +56,26 @@ The project browser supports flat and collapsible folder-tree views. On desktop,
 
 - Project discovery is capped at 250 projects per scan, breadth-first from the scan folder. The app says so when a scan is truncated.
 - This version does not provide OS keychain storage or production secret-store integration.
+- The recent-projects database needs a native SQLite build, and the package carries them for Windows (x64, x86, arm64), macOS (x64, arm64), and Linux (x64, arm64, and the musl variants of both). Other architectures that .NET itself supports, such as 32-bit ARM, s390x, and ppc64le, are not included.
 
 ## Test
 
 ```bash
 dotnet test SecretWorkbench.slnx
 ```
+
+The unit tests do not cover the packaged tool, so CI also installs the packed package for each
+target framework and checks that it serves. Run the same check locally after packing:
+
+```bash
+dotnet pack SecretWorkbench/SecretWorkbench.csproj -c Release
+scripts/smoke-test.sh 0.1.0
+```
+
+It asserts that `--help` works, that `GET /` returns 200 (which is what exercises Kestrel, the
+packaged static assets, and the native SQLite load), and that a foreign `Host` header is
+rejected. Set `SMOKE_FRAMEWORKS` to a subset, such as `"net9.0 net10.0"`, on a machine that is
+missing one of the runtimes.
 
 ## Publish a release
 

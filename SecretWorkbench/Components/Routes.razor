@@ -1,6 +1,21 @@
-﻿<Router AppAssembly="typeof(Program).Assembly" NotFoundPage="typeof(Pages.NotFound)">
+@*
+    Router.NotFoundPage arrived in .NET 10. The tool also runs on the .NET 8 and .NET 9
+    runtimes, where setting it throws at render time and every page returns a 500, so the
+    parameter is splatted in only where the property exists. On the older runtimes the
+    UseStatusCodePagesWithReExecute("/not-found") middleware still serves the same page.
+*@
+<Router AppAssembly="typeof(Program).Assembly" @attributes="RouterParameters">
     <Found Context="routeData">
         <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
         <FocusOnNavigate RouteData="routeData" Selector="h1" />
     </Found>
 </Router>
+
+@code {
+    private static readonly Dictionary<string, object> RouterParameters = new()
+    {
+#if NET10_0_OR_GREATER
+        ["NotFoundPage"] = typeof(Pages.NotFound),
+#endif
+    };
+}

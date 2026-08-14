@@ -25,16 +25,10 @@ jobs:
       - name: Smoke-test each tool framework
         shell: bash
         run: |
-          for framework in net8.0 net9.0 net10.0; do
-            tool_path="artifacts/smoke/$framework"
-            dotnet tool install \
-              --tool-path "$tool_path" \
-              --add-source artifacts/packages \
-              --framework "$framework" \
-              SecretWorkbench \
-              --version 0.1.0
-            "$tool_path/secret-workbench" --help
-          done
+          package="$(ls artifacts/packages/SecretWorkbench.*.nupkg)"
+          version="$(basename "$package" .nupkg)"
+          version="${version#SecretWorkbench.}"
+          scripts/smoke-test.sh "$version"
       - uses: actions/upload-artifact@v4
         with:
           name: nuget-package
