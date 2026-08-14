@@ -59,3 +59,16 @@ The project browser supports flat and collapsible folder-tree views. On desktop,
 ```bash
 dotnet test SecretWorkbench.slnx
 ```
+
+## Publish a release
+
+NuGet releases use trusted publishing, so the repository never stores a long-lived NuGet API key. Configure a NuGet.org trusted publishing policy for repository owner `kornect`, repository `dotnet-secrets-workbench`, workflow file `publishing.yml`, and GitHub environment `release`. Add the NuGet.org username (not email address) as the `NUGET_USER` secret in that environment.
+
+Push a semantic-version tag to test, pack, smoke-test, and publish all supported tool frameworks:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The workflow can also be started manually with a package version from the GitHub Actions page. NuGet package versions are immutable, so every release must use a new version.
