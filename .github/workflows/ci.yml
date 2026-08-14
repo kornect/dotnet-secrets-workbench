@@ -15,10 +15,26 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
       - run: dotnet restore SecretWorkbench.slnx
       - run: dotnet test SecretWorkbench.slnx --no-restore --configuration Release
-      - run: dotnet pack SecretWorkbench/SecretWorkbench.csproj --no-restore --no-build --configuration Release
+      - run: dotnet pack SecretWorkbench/SecretWorkbench.csproj --no-restore --configuration Release
+      - name: Smoke-test each tool framework
+        shell: bash
+        run: |
+          for framework in net8.0 net9.0 net10.0; do
+            tool_path="artifacts/smoke/$framework"
+            dotnet tool install \
+              --tool-path "$tool_path" \
+              --add-source artifacts/packages \
+              --framework "$framework" \
+              SecretWorkbench \
+              --version 0.1.0
+            "$tool_path/secret-workbench" --help
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: nuget-package

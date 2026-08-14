@@ -2,6 +2,8 @@
 
 A local-only Blazor GUI for viewing and bulk-editing ASP.NET Core development secrets across projects.
 
+Secret Workbench runs on .NET 8, .NET 9, or .NET 10. It can manage any MSBuild project supported by the installed `dotnet user-secrets` command; the target framework of the selected project does not need to match the runtime used by Secret Workbench.
+
 The JSON importer accepts ordinary nested `appsettings.json`-style objects. Objects are flattened with colon-delimited keys and array indexes become numeric segments, such as `Services:0:ApiKey`. Importing JSON replaces the editor's complete secret set; saving then removes keys omitted from the import.
 
 ## Install as a global tool
