@@ -1,0 +1,289 @@
+﻿@page "/"
+@using System.Text.Json
+@using SecretWorkbench.Models
+@using SecretWorkbench.Services
+@inject IUserSecretsService SecretsService
+@inject IRecentProjectsStore RecentProjectsStore
+@inject SecretWorkbenchOptions ToolOptions
+
+<PageTitle>Secret Workbench</PageTitle>
+
+<header class="tool-nav">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">{ }</span><span>Secret Workbench</span></div>
+    <button class="project-search" type="button" @onclick="FocusRoot" aria-label="Focus project folder">
+        <span>Find a project</span><kbd>⌘ K</kbd>
+    </button>
+    <span class="local-badge">Local only</span>
+</header>
+
+<section class="workbench">
+    <aside class="project-panel" aria-label="Project browser" data-project-sidebar>
+        <div class="sidebar-resizer" onpointerdown="window.secretWorkbenchSidebar.startResize(event)" ondblclick="window.secretWorkbenchSidebar.reset()" title="Drag to resize; double-click to reset" aria-hidden="true"></div>
+        <div class="panel-heading">
+            <h1>Choose a project</h1>
+            <div class="panel-heading-actions">
+                <div class="view-switcher" role="group" aria-label="Project view">
+                    <button class="@(ProjectView == ProjectViewMode.List ? "is-active" : null)" @onclick="() => ProjectView = ProjectViewMode.List" title="List view">List</button>
+                    <button class="@(ProjectView == ProjectViewMode.Tree ? "is-active" : null)" @onclick="() => ProjectView = ProjectViewMode.Tree" title="Folder tree view">Tree</button>
+                </div>
+                <span class="count">@AllProjectsCount</span>
+            </div>
+        </div>
+
+        <label for="root-path">Folder path</label>
+        <div class="path-row">
+            <input id="root-path" @ref="rootInput" @bind="RootPath" @bind:event="oninput" placeholder="/path/to/solution" />
+            <button class="button button-secondary" type="button" @onclick="ScanAsync" disabled="@IsBusy">Scan</button>
+        </div>
+        <p class="helper">Scans up to 250 projects, skipping build and source-control folders.</p>
+
+        <div class="project-list">
+            @if (RecentProjects.Count == 0 && Projects.Count == 0)
+            {
+                <div class="empty-state"><span aria-hidden="true">⌁</span><p>No projects loaded.</p><button class="text-action" @onclick="ScanAsync">Scan this folder</button></div>
+            }
+            @if (RecentProjects.Count > 0)
+            {
+                <h2 class="project-group-heading">Recent projects</h2>
+            }
+            @foreach (var project in RecentProjects)
+            {
+                <button class="project-item @(project == SelectedProject ? "is-selected" : null)" @onclick="() => OpenProjectAsync(project)">
+                    <span class="project-icon" aria-hidden="true">#</span>
+                    <span><strong>@Path.GetFileNameWithoutExtension(project)</strong><small>@ProjectDirectory(project)</small></span>
+                </button>
+            }
+            @if (ScannedProjects.Any())
+            {
+                <h2 class="project-group-heading">Found in folder</h2>
+                @if (ProjectView == ProjectViewMode.List)
+                {
+                    @foreach (var project in ScannedProjects)
+                    {
+                        <button class="project-item @(project == SelectedProject ? "is-selected" : null)" @onclick="() => OpenProjectAsync(project)">
+                            <span class="project-icon" aria-hidden="true">#</span>
+                            <span><strong>@Path.GetFileNameWithoutExtension(project)</strong><small>@RelativeProjectPath(project)</small></span>
+                        </button>
+                    }
+                }
+                else
+                {
+                    <ProjectTree Nodes="ProjectTreeNodes" SelectedProject="SelectedProject" ProjectSelected="OpenProjectAsync" IsRoot="true" />
+                }
+            }
+        </div>
+    </aside>
+
+    <main class="editor-panel">
+        @if (SelectedProject is null)
+        {
+            <div class="welcome-state"><p class="machine-label">DOTNET USER-SECRETS</p><h2>Edit the whole set.</h2><p>Choose a project to load its development secrets. Values stay on this machine and are passed to the official .NET CLI.</p></div>
+        }
+        else
+        {
+            <div class="editor-heading">
+                <div><h2>@Path.GetFileNameWithoutExtension(SelectedProject)</h2><p>@Path.GetFileName(SelectedProject) · @Entries.Count secret@(Entries.Count == 1 ? string.Empty : "s") · @ChangeSummary</p></div>
+                <div class="editor-actions">
+                    <button class="button button-secondary" @onclick="AddEntry" disabled="@IsBusy">Add secret</button>
+                    <button class="button button-primary" @onclick="SaveAsync" disabled="@(!CanSave || IsBusy)">@(IsSaving ? "Saving…" : "Save changes")</button>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(StatusMessage))
+            {
+                <div class="status @(HasError ? "status-error" : "status-success")" role="status">@StatusMessage</div>
+            }
+
+            <div class="table-tools">
+                <label class="filter-field"><span class="visually-hidden">Filter secrets</span><input @bind="Filter" @bind:event="oninput" placeholder="Filter keys…" /></label>
+                <button class="text-action" @onclick="ToggleJson">@(ShowJson ? "Close JSON" : "Paste JSON")</button>
+            </div>
+
+            @if (ShowJson)
+            {
+                <section class="json-import">
+                    <label for="json-input">appsettings-style JSON</label>
+                    <textarea id="json-input" @bind="JsonInput" placeholder='{"ConnectionStrings":{"Main":"…"}}'></textarea>
+                    <p class="helper">Nested objects and arrays are flattened to colon-delimited configuration keys. Importing replaces the complete editor contents.</p>
+                    <div><button class="button button-secondary" @onclick="ImportJson">Replace editor from JSON</button></div>
+                </section>
+            }
+
+            <div class="secret-table" role="table" aria-label="Project secrets">
+                <div class="secret-row secret-header" role="row"><span>Key</span><span>Value</span><span>Actions</span></div>
+                @foreach (var entry in FilteredEntries)
+                {
+                    <div class="secret-row" role="row">
+                        <label><span class="mobile-label">Key</span><input @bind="entry.Key" @bind:event="oninput" placeholder="Section:Key" aria-label="Secret key" /></label>
+                        <label><span class="mobile-label">Value</span><input type="@(entry.IsRevealed ? "text" : "password")" @bind="entry.Value" @bind:event="oninput" placeholder="Secret value" aria-label="Secret value" /></label>
+                        <div class="row-actions">
+                            <button class="icon-action" @onclick="() => entry.IsRevealed = !entry.IsRevealed" aria-label="@(entry.IsRevealed ? "Hide value" : "Reveal value")">@(entry.IsRevealed ? "Hide" : "Show")</button>
+                            <button class="icon-action danger" @onclick="() => RemoveEntry(entry)" aria-label="Remove secret">Remove</button>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </main>
+</section>
+
+<footer class="app-footer"><span>Development secrets are not encrypted.</span><a href="https://learn.microsoft.com/aspnet/core/security/app-secrets" target="_blank" rel="noreferrer">Microsoft guidance ↗</a></footer>
+
+@code {
+    private readonly List<SecretEntry> Entries = [];
+    private readonly List<string> Projects = [];
+    private readonly List<string> RecentProjects = [];
+    private ElementReference rootInput;
+    private string RootPath { get; set; } = string.Empty;
+    private string? SelectedProject { get; set; }
+    private string Filter { get; set; } = string.Empty;
+    private string JsonInput { get; set; } = "{}";
+    private string StatusMessage { get; set; } = string.Empty;
+    private bool ShowJson { get; set; }
+    private bool IsBusy { get; set; }
+    private bool IsSaving { get; set; }
+    private bool HasError { get; set; }
+    private string OriginalFingerprint { get; set; } = string.Empty;
+    private ProjectViewMode ProjectView { get; set; } = ProjectViewMode.List;
+
+    private IEnumerable<SecretEntry> FilteredEntries => string.IsNullOrWhiteSpace(Filter)
+        ? Entries
+        : Entries.Where(x => x.Key.Contains(Filter, StringComparison.OrdinalIgnoreCase));
+    private bool CanSave => Entries.All(x => !string.IsNullOrWhiteSpace(x.Key)) &&
+                            Entries.Select(x => x.Key.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count() == Entries.Count;
+    private string CurrentFingerprint => JsonSerializer.Serialize(Entries.OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase).Select(x => new[] { x.Key.Trim(), x.Value }));
+    private string ChangeSummary => CurrentFingerprint == OriginalFingerprint ? "No unsaved changes" : "Unsaved changes";
+    private IEnumerable<string> ScannedProjects => Projects.Where(project => !RecentProjects.Contains(project, StringComparer.OrdinalIgnoreCase));
+    private int AllProjectsCount => RecentProjects.Concat(Projects).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+    private IReadOnlyList<ProjectTreeNode> ProjectTreeNodes => BuildProjectTree(ScannedProjects);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            RootPath = ToolOptions.RootPath;
+            await LoadRecentProjectsAsync();
+            await ScanAsync();
+        }
+    }
+
+    private async Task FocusRoot() => await rootInput.FocusAsync();
+
+    private async Task ScanAsync()
+    {
+        await RunAsync(async () => { Projects.Clear(); Projects.AddRange(await SecretsService.FindProjectsAsync(RootPath)); StatusMessage = $"Found {Projects.Count} project(s)."; });
+    }
+
+    private async Task OpenProjectAsync(string project)
+    {
+        await RunAsync(async () =>
+        {
+            Entries.Clear();
+            IReadOnlyDictionary<string, string> secrets;
+            try { secrets = await SecretsService.ListAsync(project); }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("UserSecretsId", StringComparison.OrdinalIgnoreCase))
+            {
+                await SecretsService.InitializeAsync(project);
+                secrets = await SecretsService.ListAsync(project);
+                StatusMessage = "Initialized user secrets for this project.";
+            }
+            Entries.AddRange(secrets.OrderBy(x => x.Key).Select(x => new SecretEntry { Key = x.Key, Value = x.Value }));
+            SelectedProject = project;
+            OriginalFingerprint = CurrentFingerprint;
+            await RecentProjectsStore.RememberAsync(project);
+            await LoadRecentProjectsAsync();
+        });
+    }
+
+    private void AddEntry() { Entries.Add(new SecretEntry()); StatusMessage = string.Empty; }
+    private void RemoveEntry(SecretEntry entry) { Entries.Remove(entry); StatusMessage = "Secret staged for removal. Save to apply."; HasError = false; }
+    private void ToggleJson()
+    {
+        ShowJson = !ShowJson;
+        if (ShowJson && CanSave)
+        {
+            JsonInput = JsonSerializer.Serialize(Entries.ToDictionary(x => x.Key, x => x.Value), new JsonSerializerOptions { WriteIndented = true });
+        }
+    }
+
+    private void ImportJson()
+    {
+        try
+        {
+            var imported = JsonSecretFlattener.Flatten(JsonInput);
+            Entries.Clear();
+            Entries.AddRange(imported.Select(x => new SecretEntry { Key = x.Key, Value = x.Value }));
+            StatusMessage = $"Loaded {Entries.Count} secret(s) into the editor. Save to apply.";
+            HasError = false;
+            ShowJson = false;
+        }
+        catch (JsonException ex) { StatusMessage = $"JSON is invalid: {ex.Message}"; HasError = true; }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (SelectedProject is null || !CanSave) return;
+        IsSaving = true;
+        await RunAsync(async () =>
+        {
+            var values = Entries.ToDictionary(x => x.Key.Trim(), x => x.Value, StringComparer.OrdinalIgnoreCase);
+            await SecretsService.SaveAsync(SelectedProject, values);
+            OriginalFingerprint = CurrentFingerprint;
+            StatusMessage = $"Saved {values.Count} secret(s).";
+        });
+        IsSaving = false;
+    }
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        IsBusy = true; HasError = false; StatusMessage = string.Empty;
+        try { await action(); }
+        catch (Exception ex) { StatusMessage = ex.Message; HasError = true; }
+        finally { IsBusy = false; StateHasChanged(); }
+    }
+
+    private string RelativeProjectPath(string project) => Path.GetRelativePath(RootPath, project);
+    private static string ProjectDirectory(string project) => Path.GetDirectoryName(project) ?? project;
+
+    private IReadOnlyList<ProjectTreeNode> BuildProjectTree(IEnumerable<string> projects)
+    {
+        var root = new ProjectTreeNode(string.Empty);
+        foreach (var project in projects.OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        {
+            var segments = Path.GetRelativePath(RootPath, project)
+                .Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                .Where(segment => !string.IsNullOrWhiteSpace(segment) && segment != ".")
+                .ToArray();
+            var current = root;
+            foreach (var directory in segments.Take(Math.Max(0, segments.Length - 1)))
+            {
+                var child = current.Children.FirstOrDefault(node => !node.IsProject && node.Name.Equals(directory, StringComparison.OrdinalIgnoreCase));
+                if (child is null)
+                {
+                    child = new ProjectTreeNode(directory);
+                    current.Children.Add(child);
+                }
+                current = child;
+            }
+            current.Children.Add(new ProjectTreeNode(segments.LastOrDefault() ?? Path.GetFileName(project), project));
+        }
+        SortTree(root.Children);
+        return root.Children;
+    }
+
+    private static void SortTree(List<ProjectTreeNode> nodes)
+    {
+        nodes.Sort((left, right) => left.IsProject == right.IsProject
+            ? StringComparer.OrdinalIgnoreCase.Compare(left.Name, right.Name)
+            : left.IsProject ? 1 : -1);
+        foreach (var node in nodes) SortTree(node.Children);
+    }
+
+    private async Task LoadRecentProjectsAsync()
+    {
+        RecentProjects.Clear();
+        RecentProjects.AddRange(await RecentProjectsStore.ListAsync());
+    }
+
+    private enum ProjectViewMode { List, Tree }
+}

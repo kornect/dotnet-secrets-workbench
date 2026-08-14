@@ -1,0 +1,7 @@
+**/bin/
+**/obj/
+artifacts/
+.hallmark/
+.DS_Store
+*.user
+*.suo

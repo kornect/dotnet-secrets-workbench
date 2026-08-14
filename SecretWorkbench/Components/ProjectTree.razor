@@ -1,0 +1,32 @@
+@using SecretWorkbench.Models
+
+<ul class="project-tree @(IsRoot ? "project-tree-root" : null)">
+    @foreach (var node in Nodes)
+    {
+        <li>
+            @if (node.IsProject)
+            {
+                <button class="tree-project @(node.ProjectPath == SelectedProject ? "is-selected" : null)"
+                        @onclick="() => ProjectSelected.InvokeAsync(node.ProjectPath!)"
+                        title="@node.ProjectPath">
+                    <span class="project-icon" aria-hidden="true">#</span>
+                    <strong>@Path.GetFileNameWithoutExtension(node.Name)</strong>
+                </button>
+            }
+            else
+            {
+                <details open>
+                    <summary><span aria-hidden="true">▸</span><strong>@node.Name</strong></summary>
+                    <ProjectTree Nodes="node.Children" SelectedProject="SelectedProject" ProjectSelected="ProjectSelected" />
+                </details>
+            }
+        </li>
+    }
+</ul>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<ProjectTreeNode> Nodes { get; set; } = [];
+    [Parameter] public string? SelectedProject { get; set; }
+    [Parameter] public EventCallback<string> ProjectSelected { get; set; }
+    [Parameter] public bool IsRoot { get; set; }
+}
